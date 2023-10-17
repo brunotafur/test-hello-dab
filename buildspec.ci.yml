@@ -1,0 +1,56 @@
+version: 0.2
+
+env:
+  shell: bash
+  variables:
+    CI: true
+    PIP_DISABLE_PIP_VERSION_CHECK: true
+    PIP_QUIET: true
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.8
+      nodejs: 14
+    commands:
+      - aws codeartifact login --tool pip --repository $CODEARTIFACT_PYPI_REPO --domain $CODEARTIFACT_DOMAIN --domain-owner $ACCOUNT_ID
+      - pip install pipx==$PIPX_PACKAGE_VERSION
+      # Add pipx binaries to path
+      - export PATH="$PATH:/root/.local/bin"
+      - pipx install dgx-devops-pipeline-library==$PIPELINE_LIBRARY_PACKAGE_VERSION
+      - dgx-pipeline aws codeartifact npm-login
+        --repository $CODEARTIFACT_NPM_REPO
+        --domain $CODEARTIFACT_DOMAIN
+        --domain-owner $ACCOUNT_ID
+        --ssm-parameter-path /$PROJECT_OWNER/shared/codebuild/codeartifact/npmlogin
+  pre_build:
+    commands:
+      - dgx-pipeline build-init
+  build:
+    commands:
+      - dgx-pipeline build-notify --status started
+      - dgx-pipeline npm login --token $GITHUB_TOKEN
+      - npm ci
+
+      # Run Nx Affected Build
+      - dgx-pipeline nx gh
+        --github-app-id "$GITHUB_APP_ID"
+        --github-app-installation-id "$GITHUB_APP_INSTALLATION_ID"
+        --github-app-private-key "$GITHUB_APP_PRIVATE_KEY"
+        build
+        --github-owner "$GITHUB_OWNER"
+        --repository "$REPOSITORY_NAME"
+
+      # Store build artifact
+      - dgx-pipeline nx gh
+        --github-app-id "$GITHUB_APP_ID"
+        --github-app-installation-id "$GITHUB_APP_INSTALLATION_ID"
+        --github-app-private-key "$GITHUB_APP_PRIVATE_KEY"
+        store-artifact
+        --commit-id "$CODEBUILD_RESOLVED_SOURCE_VERSION"
+        --github-owner "$GITHUB_OWNER"
+        --repository "$REPOSITORY_NAME"
+        --control-dynamodb-table "$DYNAMODB_TABLE_NAME"
+  post_build:
+    commands:
+      - dgx-pipeline build-notify --use-codebuild-env-var
