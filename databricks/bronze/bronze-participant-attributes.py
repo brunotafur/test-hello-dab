@@ -109,4 +109,5 @@ def bronze_participant_attributes():
         .option("multiLine","true")
         .schema(schema)
         .load(source_bucket + "/PARTICIPANT_ATTRIBUTES/*/*/*/*")
-        .select("*","_metadata.file_name", "_metadata.file_path","_metadata.file_modification_time"))
+        .select("*","_metadata.file_name", "_metadata.file_path","_metadata.file_modification_time")
+        .dropDuplicates(["conversationId"]))

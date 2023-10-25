@@ -43,4 +43,5 @@ def bronze_routing_skills():
             F.current_timestamp().alias("processing_time"),
             F.input_file_name().alias("source_file"),
         )
+        .dropDuplicates(["id"])
     )

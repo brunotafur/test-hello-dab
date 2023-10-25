@@ -171,4 +171,5 @@ def bronze_conversation_job():
             F.current_timestamp().alias("processing_time"),
             F.input_file_name().alias("source_file"),
         )
+        .dropDuplicates(["conversationId"])
     )

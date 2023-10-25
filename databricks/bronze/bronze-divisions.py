@@ -39,6 +39,6 @@ def bronze_divisions():
             "*",
             "_metadata.*",
             F.current_timestamp().alias("processing_time"),
-            F.input_file_name().alias("source_file"),
-        )
+            F.input_file_name().alias("source_file")
+        ).dropDuplicates(["id"])
     )
