@@ -100,12 +100,21 @@ def bronze_routing_queues():
         spark.readStream.format("cloudFiles")
         .option("cloudFiles.format", "json")
         .option("multiLine","true")
-        .load(source_bucket + "/ROUTING_QUEUES/*/*/*/")
+        .load(source_bucket + "/ROUTING_QUEUES/*/*/*/*")
         .select(
             "*",
             "_metadata.*",
             F.current_timestamp().alias("processing_time"),
             F.input_file_name().alias("source_file"),
         )
-        .dropDuplicates(["id"])
     )
+
+dlt.create_streaming_table("stg_silver_routing_queues")
+
+dlt.apply_changes(
+  target = "stg_silver_routing_queues",
+  source = "bronze_routing_queues",
+  keys = ["id"],
+  sequence_by = F.col("file_modification_time"),
+  stored_as_scd_type = "2"
+)

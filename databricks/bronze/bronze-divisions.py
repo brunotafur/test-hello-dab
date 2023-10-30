@@ -39,6 +39,15 @@ def bronze_divisions():
             "*",
             "_metadata.*",
             F.current_timestamp().alias("processing_time"),
-            F.input_file_name().alias("source_file")
-        ).dropDuplicates(["id"])
+            F.input_file_name().alias("source_file"),
+        )
     )
+dlt.create_streaming_table("stg_silver_divisions")
+
+dlt.apply_changes(
+  target = "stg_silver_divisions",
+  source = "bronze_divisions",
+  keys = ["id"],
+  sequence_by = F.col("file_modification_time"),
+  stored_as_scd_type = "2"
+)

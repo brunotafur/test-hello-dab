@@ -109,5 +109,14 @@ def bronze_participant_attributes():
         .option("multiLine","true")
         .schema(schema)
         .load(source_bucket + "/PARTICIPANT_ATTRIBUTES/*/*/*/*")
-        .select("*","_metadata.file_name", "_metadata.file_path","_metadata.file_modification_time")
-        .dropDuplicates(["conversationId"]))
+        .select("*","_metadata.file_name", "_metadata.file_path","_metadata.file_modification_time"))
+
+dlt.create_streaming_table("stg_silver_participant_attributes")
+
+dlt.apply_changes(
+  target = "stg_silver_participant_attributes",
+  source = "bronze_participant_attributes",
+  keys = ["conversationId"],
+  sequence_by = F.col("file_modification_time"),
+  stored_as_scd_type = "2"
+)

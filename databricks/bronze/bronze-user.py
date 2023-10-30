@@ -54,12 +54,20 @@ def bronze_user():
         .option("cloudFiles.format", "json")
         .option("multiLine","true")
         .schema(schema)
-        .load(source_bucket + "/USER/*/*/*/")
+        .load(source_bucket + "/USER/*/*/*/*")
         .select(
             "*",
             "_metadata.*",
             F.current_timestamp().alias("processing_time"),
             F.input_file_name().alias("source_file"),
         )
-        .dropDuplicates(["id"])
     )
+dlt.create_streaming_table("stg_silver_user")
+
+dlt.apply_changes(
+  target = "stg_silver_user",
+  source = "bronze_user",
+  keys = ["id"],
+  sequence_by = F.col("file_modification_time"),
+  stored_as_scd_type = "2"
+)

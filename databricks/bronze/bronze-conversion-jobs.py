@@ -171,5 +171,14 @@ def bronze_conversation_job():
             F.current_timestamp().alias("processing_time"),
             F.input_file_name().alias("source_file"),
         )
-        .dropDuplicates(["conversationId"])
     )
+
+dlt.create_streaming_table("stg_conversation_job")
+
+dlt.apply_changes(
+  target = "stg_conversation_job",
+  source = "bronze_conversation_job",
+  keys = ["conversationId"],
+  sequence_by = F.col("file_modification_time"),
+  stored_as_scd_type = "2"
+)
