@@ -1,7 +1,0 @@
-version: 0.2
-
-batch:
-  fast-fail: false
-  build-graph:
-    - identifier: build
-      buildspec: .devops/buildspec.build.yml
