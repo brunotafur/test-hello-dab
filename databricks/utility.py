@@ -6,18 +6,20 @@ from pyspark.sql.types import *
 def metricsExtract(df: DataFrame, col_old: list, col_new: list) -> DataFrame:
     """
     Function expands the metrics names with its values
-    
+    To be used extract metrics(Attribute name and corresponding values)
+
+    eg: metricsExtract(df, old_columns, new_columns)
     """
     for i in range(len(col_old)):
             df = df.withColumn(col_new[i], F.when(F.col("name") == col_old[i], F.col("value")).otherwise(None))
     return df
 
-def flatten(df):
+def flatten(df: DataFrame) -> DataFrame:
    """
    Function flatten the complex data, which explodes the Arrays and Expand all Structs schema
    
    Paramater: Dataframe to be exploded
-   eg: flatten(bronze_conversation_jobs)
+   eg: flatten(df)
    """
    # compute Complex Fields (Lists and Structs) in Schema   
    complex_fields = dict([(field.name, field.dataType)
