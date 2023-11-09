@@ -14,7 +14,7 @@ def participantAttributesExtract(df: DataFrame) -> DataFrame:
     """
     pa = flatten(df)
     pa = (
-        PA.withColumnRenamed("participantId", "participant_Id")
+        pa.withColumnRenamed("participantId", "participant_Id")
         .withColumnRenamed("CountryCode", "Country_Code")
         .withColumnRenamed("ClientBrand", "Client_Brand")
         .withColumnRenamed("CallType", "Call_Type")
@@ -25,7 +25,7 @@ def participantAttributesExtract(df: DataFrame) -> DataFrame:
     return (
         pa.select(
             "LegId",
-            "conversationId",
+            "participant_Id",
             "Country_Code",
             "Client_Brand",
             "Commercial_Type",
@@ -36,8 +36,7 @@ def participantAttributesExtract(df: DataFrame) -> DataFrame:
         .distinct()
     )
 
-#to get the all required data from conversation jobs relevent for all other tables
-def silverConversationSnapshot(df: DataFrame) -> DataFrame:
+def silverConversationParticipantSnapshot(conversations: DataFrame, part_attributes: DataFrame) -> DataFrame:
     """
     Contains all data extracted conversation jobs - Used as the source for all other Silver table
     Returns : Dataframe
@@ -115,14 +114,10 @@ def silverConversationSnapshot(df: DataFrame) -> DataFrame:
         "Conversation_Id",
         "Leg_Id",
         "primary_division_id",
-        "participantId",
         "Queue",
         "Skill",
         "originatingDirection",
-        "Transfer_Leg",
         "conversationStart",
-        "Leg_Ordinal",
-        "Alternate_Leg_Flag",
         "Conversation_Date",
         "Conversation_End_Date",
         "Conversation_Date_Key",
@@ -131,9 +126,7 @@ def silverConversationSnapshot(df: DataFrame) -> DataFrame:
         "Conversation_End_Time",
         "Conversation_End_Key",
         "Leg_Start_Time",
-        "Leg_Start_Key",
         "Leg_End_Time",
-        "Leg_End_Key",
         "ANI",
         "DDI",
         "NTLOGIN",
@@ -182,113 +175,46 @@ def silverConversationSnapshot(df: DataFrame) -> DataFrame:
         "segmentEnd",
         "requestedRoutings",
         "selectedAgentId",
-        "direction"
+        "direction",
+        "Country_Code",
+        "Client_Brand",
+        "Commercial_Type",
+        "Call_Type",
+        "Planning_Unit"    
     ]
 
-    data_with_primary_division = (df.withColumn("primary_division_id", F.col("divisionIds")[0]))
+    conversations_divsions = (conversations.withColumn("primary_division_id", F.col("divisionIds")[0]))
+    p_attributes = (participantAttributesExtract(part_attributes).withColumnRenamed("LegId", "Leg_Id"))
     
     conversation_job_flattened = (
-        flatten(data_with_primary_division)
+        flatten(conversations_divsions)
         .withColumnRenamed("ivr.Priority", "ivr_Priority")
         .withColumnRenamed("ivr.Skills", "ivr_Skills")
         .drop(*cols_to_drop_after_explode)
+        .distinct()
     )
 
+    conversation_part = (conversation_job_flattened
+                    .join(p_attributes, conversation_job_flattened.participantId == p_attributes.participant_Id,"leftouter")
+                    .drop("participantId", "participant_Id","LegId")
+                    .distinct())
+
     Conversation_jobs = (
-        conversation_job_flattened.withColumn(
-            "conversationStart",
-            F.to_timestamp(F.col("conversationStart"), "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"),
+        conversation_part.withColumn("conversationStart",
+                                     F.to_timestamp(F.col("conversationStart"), "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"),
         )
-        .withColumn(
-            "conversationEnd",
-            F.to_timestamp(F.col("conversationEnd"), "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"),
-        )
+        .withColumn("conversationEnd", F.to_timestamp(F.col("conversationEnd"), "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"))
         .withColumnRenamed("conversationId", "Conversation_Id")
         .withColumnRenamed("NTLogin", "NTLOGIN")
         .withColumn("Conversation_Date", F.to_date(F.col("conversationStart")))
         .withColumn("Conversation_End_Date", F.to_date(F.col("conversationEnd")))
-        .withColumn(
-            "Conversation_Date_Key",
-            F.concat_ws(
-                "",
-                F.date_format(F.col("conversationStart"), "yyyy"),
-                F.date_format(F.col("conversationStart"), "MM"),
-                F.date_format(F.col("conversationStart"), "dd"),
-            ).cast("integer"),
-        )
-        .withColumn(
-            "Conversation_Start_Time",
-            F.date_format(F.col("conversationStart"), "HH:mm:ss:SSS"),
-        )
-        .withColumn(
-            "Conversation_Start_Key",
-            F.concat_ws(
-                "",
-                F.date_format(F.col("conversationStart"), "HH"),
-                F.date_format(F.col("conversationStart"), "mm"),
-                F.date_format(F.col("conversationStart"), "ss"),
-                F.date_format(F.col("conversationStart"), "SSS"),
-            ).cast("integer"),
-        )
-        .withColumn(
-            "Conversation_End_Time",
-            F.date_format(F.col("conversationEnd"), "HH:mm:ss:SSS"),
-        )
-        .withColumn(
-            "Conversation_End_Key",
-            F.concat_ws(
-                "",
-                F.date_format(F.col("conversationEnd"), "HH"),
-                F.date_format(F.col("conversationEnd"), "mm"),
-                F.date_format(F.col("conversationEnd"), "ss"),
-                F.date_format(F.col("conversationEnd"), "SSS"),
-            ).cast("integer")
-        )
-        .withColumnRenamed("LegId", "Leg_Id")
-        .withColumn(
-            "Leg_Ordinal_value", F.substring(F.col("Leg_Id"), -1, 1)
-        )  # Transfer_Leg
-        .withColumn(
-            "Leg_Ordinal",
-            F.when(
-                F.col("Leg_Ordinal_value").cast("int").isNotNull(),
-                F.col("Leg_Ordinal_value").cast("int"),
-            ).otherwise(None),
-        )
-        .withColumn(
-            "Alternate_Leg_Flag",
-            F.when(
-                F.col("Leg_Ordinal_value").cast("int").isNull(),
-                F.col("Leg_Ordinal_value"),
-            ).otherwise(None),
-        )
-        .withColumn(
-            "Transfer_Leg", F.when(F.col("Leg_Ordinal") > 1, True).otherwise(False)
-        )
-        .withColumn(
-            "Leg_Start_Time", F.date_format(F.col("segmentStart"), "HH:mm:ss:SSS")
-        )
+        .withColumn("Conversation_Date_Key",  F.regexp_replace(F.col("Conversation_Date"), "-", "").cast("long"))
+        .withColumn("Conversation_Start_Time", F.date_format(F.col("conversationStart"), "HH:mm:ss:SSS"))
+        .withColumn("Conversation_Start_Key",  F.regexp_replace(F.col("Conversation_Start_Time"), ":", "").cast("long"))
+        .withColumn("Conversation_End_Time",F.date_format(F.col("conversationEnd"), "HH:mm:ss:SSS"))
+        .withColumn("Conversation_End_Key", F.regexp_replace(F.col("Conversation_End_Time"), ":", "").cast("long"))
+        .withColumn("Leg_Start_Time", F.date_format(F.col("segmentStart"), "HH:mm:ss:SSS"))
         .withColumn("Leg_End_Time", F.date_format(F.col("segmentEnd"), "HH:mm:ss:SSS"))
-        .withColumn(
-            "Leg_Start_Key",
-            F.concat_ws(
-                "",
-                F.date_format(F.col("segmentStart"), "HH"),
-                F.date_format(F.col("segmentStart"), "mm"),
-                F.date_format(F.col("segmentStart"), "ss"),
-                F.date_format(F.col("segmentStart"), "SSS"),
-            ).cast("integer")
-        )
-        .withColumn(
-            "Leg_End_Key",
-            F.concat_ws(
-                "",
-                F.date_format(F.col("segmentStart"), "HH"),
-                F.date_format(F.col("segmentStart"), "mm"),
-                F.date_format(F.col("segmentStart"), "ss"),
-                F.date_format(F.col("segmentStart"), "SSS"),
-            ).cast("integer")
-        )
         .withColumn("ANI", F.when(F.col("ani").startswith("tel:+"),
                                   F.regexp_replace(F.col("ani"), "[^0-9]", "").cast("long")).otherwise(None))
         .withColumn("DDI", F.when(F.col("DDI").startswith("tel:+"),
@@ -301,7 +227,10 @@ def silverConversationSnapshot(df: DataFrame) -> DataFrame:
         .withColumnRenamed("purpose", "Purpose")
         .withColumnRenamed("queueId", "Queue")
         .withColumnRenamed("requestedRoutingSkillIds", "Skill")
+        .distinct()
     )
+
+
     metrics_col_oldname = [
     "nConnected",
     "tIvr",
@@ -373,7 +302,7 @@ def inboundOutboundLegs(
     routing_skills: DataFrame,
     direction: str,
     column_list : list
-) -> DataFrame:
+    ) -> DataFrame:
     
     """
     Tranformation of relevent data from all source to Inbound/outbound legs
@@ -388,14 +317,14 @@ def inboundOutboundLegs(
     Returns : Dataframe with Inbound/Outbound tranformations
 
     """
-    divisions = (divisions.select("id", "name", F.substring(F.col("name"), 1, 2).alias("Timezone")).distinct())
-    conversation = (conversation.filter((F.col("originatingDirection") == direction) & 
+    divisions = (div.select("id", "name", F.substring(F.col("name"), -2, 2).alias("Timezone")).distinct())
+    conversation = (conv.filter((F.col("originatingDirection") == "inbound") & 
                         (F.col("Media_Type") != "callback") & 
                         (F.col("Leg_Id").isNotNull())
                         )) 
-    r_queue = (routing_queues.select(F.col("id").alias("Queue_ID"), F.col("name").alias("Queue_Name")).distinct())
-    r_skills = (routing_skills.select(F.col("id").alias("Skill_ID"), F.col("name").alias("Skill_Name")).distinct()) 
-    p_attributes = (participantAttributesExtract(partition_attributes).withColumnRenamed("LegId", "legid"))
+    r_queue = (rq.select(F.col("id").alias("Queue_ID"), F.col("name").alias("Queue_Name")).distinct())
+    r_skills = (rs.select(F.col("id").alias("Skill_ID"), F.col("name").alias("Skill_Name")).distinct()) 
+    p_attributes = (participantAttributesExtract(pa).withColumnRenamed("LegId", "legid"))
 
     ani_window_spec = Window.partitionBy("ANI").orderBy("conversationStart")
     ddi_window_spec = Window.partitionBy("DDI").orderBy("conversationStart")
@@ -407,73 +336,11 @@ def inboundOutboundLegs(
                     .join(r_skills, conversation.Skill == r_skills.Skill_ID, "left")
                     .drop("Queue", "Skill")
                     )
-    
-    conversation_details = (
-    conversation_leg.select(
-        "Conversation_Id",
-        "Leg_Id",
-        "Transfer_Leg",
-        "Leg_Ordinal",
-        "Alternate_Leg_Flag",
-        "conversationStart",
-        "Conversation_Date",
-        "Conversation_Date_Key",
-        "Conversation_Start_Time",
-        "Conversation_Start_Key",
-        "Conversation_End_Time",
-        "Conversation_End_Key",
-        "ANI",
-        "DNIS",
-        "DDI",
-        "AgentNTLogin",
-        "Timezone"
-        )
-    .withColumnRenamed("Leg_Id", "LegId")
-    .distinct()
-    )
 
-    leg_details = (
-    conversation_leg.select(
-        F.col("Conversation_Id").alias("ConversationId"),
-        "Leg_Id",
-        "Leg_Start_Time",
-        "Leg_Start_Key",
-        "Leg_End_Time",
-        "Leg_End_Key",
-        "Dialing_Time",
-        "Contacting_Time",
-        "Talk_Time",
-        "Held_Time",
-        "ACW_Time",
-        "Handle_Time",
-        "Monitoring_Time",
-        "Voice_Mail_Time",
-        "Transferred",
-        "Transferred_Blind",
-        "Conference",
-        "CoBrowse",
-        "Consult",
-        "Transferred_Consult",
-        "Disconnect_Type",
-        "Connected",
-        "Answered_Time",
-        "Wait_Time",
-        "Short_Abandon_Time",
-        "Agent_Response_Time",
-        "Not_Responding_Time",
-        "User_Response_Time",
-        "Abandon_Time",
-        "IVR_Time",
-        "ACD_Time",
-        "Over_SLA",
-        "Offered",
-        "Alert_Time",
-        "Disconnect_Type",
-        "Queue_Name",
-        "Skill_Name",
-        "NTLOGIN",
-        "destinationAddresses"
-    )
+
+
+    conversation_agg = (
+    conversation_leg
     .fillna(
         0,
         subset=[
@@ -506,49 +373,86 @@ def inboundOutboundLegs(
     )
     .distinct())
 
-    leg_details_agg = leg_details.groupBy("Leg_Id", "ConversationId").agg(
-        F.min("Leg_Start_Time").alias("Leg_Start_Time"),
-        F.min("Leg_Start_Key").alias("Leg_Start_Key"),
-        F.max("Leg_End_Time").alias("Leg_End_Time"),
-        F.max("Leg_End_Key").alias("Leg_End_Key"),
-        F.sum("Dialing_Time").alias("Dialing_Time"),
-        F.sum("Contacting_Time").alias("Contacting_Time"),
-        F.sum("Talk_Time").alias("Talk_Time"),
-        F.sum("ACW_Time").alias("ACW_Time"),
-        F.sum("Handle_Time").alias("Handle_Time"),
-        F.sum("Monitoring_Time").alias("Monitoring_Time"),
-        F.sum("Voice_Mail_Time").alias("Voice_Mail_Time"),
-        F.sum("Held_Time").alias("Held_Time"),
-        F.max("Transferred").alias("Transferred"),
-        F.max("Transferred_Blind").alias("Transferred_Blind"),
-        F.max("Conference").alias("Conference"),
-        F.max("CoBrowse").alias("CoBrowse"),
-        F.max("Consult").alias("Consult"),
-        F.max("Transferred_Consult").alias("Transferred_Consult"),
-        F.max("Connected").alias("Connected"),
-        F.sum("Answered_Time").alias("Answered_Time"),
-        F.sum("Abandon_Time").alias("Abandon_Time"),
-        F.sum("Short_Abandon_Time").alias("Short_Abandon_Time"),
-        F.sum("Agent_Response_Time").alias("Agent_Response_Time"),
-        F.sum("Not_Responding_Time").alias("Not_Responding_Time"),
-        F.sum("User_Response_Time").alias("User_Response_Time"),
-        F.sum("IVR_Time").alias("IVR_Time"),
-        F.max("Disconnect_Type").alias("Disconnect_Type"),
-        F.sum("Wait_Time").alias("Wait_Time"),
-        F.sum("ACD_Time").alias("ACD_Time"),
-        F.max("Offered").alias("Offered"),
-        F.max("Over_SLA").alias("Over_SLA"),
-        F.sum("Alert_Time").alias("Alert_Time"),
-        F.max("Queue_Name").alias("Queue"),
-        F.max("Skill_Name").alias("Skill"),
-        F.max("NTLOGIN").alias("NTLOGIN"),
-        F.max("destinationAddresses").alias("destinationAddresses")
-    )
+    conversation_agg = (conversation_agg
+                    .groupBy(
+                        "Leg_Id", 
+                        "Conversation_Id",
+                        "conversationStart",
+                        "Conversation_Date",
+                        "Conversation_Date_Key",
+                        "Conversation_Start_Time",
+                        "Conversation_Start_Key",
+                        "Conversation_End_Time",
+                        "Conversation_End_Key",
+                        "Timezone",
+                        "Country_Code",
+                        "Client_Brand",
+                        "Commercial_Type",
+                        "Call_Type",
+                        "Planning_Unit")
+                    .agg(
+                        F.min("Leg_Start_Time").alias("Leg_Start_Time"),
+                        F.max("Leg_End_Time").alias("Leg_End_Time"),
+                        F.sum("Dialing_Time").alias("Dialing_Time"),
+                        F.sum("Contacting_Time").alias("Contacting_Time"),
+                        F.sum("Talk_Time").alias("Talk_Time"),
+                        F.sum("ACW_Time").alias("ACW_Time"),
+                        F.sum("Handle_Time").alias("Handle_Time"),
+                        F.sum("Monitoring_Time").alias("Monitoring_Time"),
+                        F.sum("Voice_Mail_Time").alias("Voice_Mail_Time"),
+                        F.sum("Held_Time").alias("Held_Time"),
+                        F.max("Transferred").alias("Transferred"),
+                        F.max("Transferred_Blind").alias("Transferred_Blind"),
+                        F.max("Conference").alias("Conference"),
+                        F.max("CoBrowse").alias("CoBrowse"),
+                        F.max("Consult").alias("Consult"),
+                        F.max("Transferred_Consult").alias("Transferred_Consult"),
+                        F.max("Connected").alias("Connected"),
+                        F.sum("Answered_Time").alias("Answered_Time"),
+                        F.sum("Abandon_Time").alias("Abandon_Time"),
+                        F.sum("Short_Abandon_Time").alias("Short_Abandon_Time"),
+                        F.sum("Agent_Response_Time").alias("Agent_Response_Time"),
+                        F.sum("Not_Responding_Time").alias("Not_Responding_Time"),
+                        F.sum("User_Response_Time").alias("User_Response_Time"),
+                        F.sum("IVR_Time").alias("IVR_Time"),
+                        F.max("Disconnect_Type").alias("Disconnect_Type"),
+                        F.sum("Wait_Time").alias("Wait_Time"),
+                        F.sum("ACD_Time").alias("ACD_Time"),
+                        F.max("Offered").alias("Offered"),
+                        F.max("Over_SLA").alias("Over_SLA"),
+                        F.sum("Alert_Time").alias("Alert_Time"),
+                        F.max("Queue_Name").alias("Queue"),
+                        F.max("Skill_Name").alias("Skill"),
+                        F.max("NTLOGIN").alias("NTLOGIN"),
+                        F.max("destinationAddresses").alias("destinationAddresses"),
+                        F.max("ANI").alias("ANI"),
+                        F.max("DNIS").alias("DNIS"),
+                        F.max("DDI").alias("DDI"),
+                        F.max("AgentNTLogin").alias("AgentNTLogin")))
+
     if direction == "inbound":
 
-        final = (conversation_details.join(leg_details_agg, 
-                                        conversation_details.LegId == leg_details_agg.Leg_Id, "left")
-                .join(p_attributes, conversation_details.LegId == p_attributes.legid, "left")
+        final = (conversation_agg
+        .withColumn("Leg_Ordinal_value", F.substring(F.col("Leg_Id"), -1, 1))  # Transfer_Leg
+        .withColumn(
+            "Leg_Ordinal",
+            F.when(
+                F.col("Leg_Ordinal_value").cast("int").isNotNull(),
+                F.col("Leg_Ordinal_value").cast("int"),
+            ).otherwise(None),
+        )
+        .withColumn(
+            "Alternate_Leg_Flag",
+            F.when(
+                F.col("Leg_Ordinal_value").cast("int").isNull(),
+                F.col("Leg_Ordinal_value"),
+            ).otherwise(None),
+        )
+        .withColumn(
+            "Transfer_Leg", F.when(F.col("Leg_Ordinal") > 1, True).otherwise(False)
+        )
+        .withColumn("Leg_Start_Key",F.regexp_replace(F.col("Leg_Start_Time"), ":", "").cast("long"))
+        .withColumn("Leg_End_Key", F.regexp_replace(F.col("Leg_End_Time"), ":", "").cast("long"))
         .withColumn(
             "Transfer_Queue",
             F.when(F.col("Queue").isNotNull(), F.col("Queue")).otherwise(None),
@@ -599,10 +503,28 @@ def inboundOutboundLegs(
     
     if direction == "outbound":
 
-        final = (conversation_details
-                .join(leg_details_agg, conversation_details.LegId == leg_details_agg.Leg_Id, "left")
-                .join(p_attributes, conversation_details.LegId == p_attributes.legid, "left")
+        final = (conversation_agg
+                 .withColumn("Leg_Ordinal_value", F.substring(F.col("Leg_Id"), -1, 1))  # Transfer_Leg
         .withColumn(
+            "Leg_Ordinal",
+            F.when(
+                F.col("Leg_Ordinal_value").cast("int").isNotNull(),
+                F.col("Leg_Ordinal_value").cast("int"),
+            ).otherwise(None),
+        )
+        .withColumn(
+            "Alternate_Leg_Flag",
+            F.when(
+                F.col("Leg_Ordinal_value").cast("int").isNull(),
+                F.col("Leg_Ordinal_value"),
+            ).otherwise(None),
+        )
+        .withColumn(
+            "Transfer_Leg", F.when(F.col("Leg_Ordinal") > 1, True).otherwise(False)
+        )
+        .withColumn("Leg_Start_Key",F.regexp_replace(F.col("Leg_Start_Time"), ":", "").cast("long"))
+        .withColumn("Leg_End_Key", F.regexp_replace(F.col("Leg_End_Time"), ":", "").cast("long"))
+                 .withColumn(
             "Transfer_Queue",
             F.when(F.col("Queue").isNotNull(), F.col("Queue")).otherwise(None),
         )
@@ -649,7 +571,7 @@ def inboundOutboundLegs(
 
         return final.select(*column_list)
     
-def callBackConversations(conversation_leg, participant_attribute, queues, skills, user):
+def callBackConversations(conversation_leg, queues, skills, user):
     """
     Tranformation of relevent data from all source to Call Back Conversations legs
 
@@ -717,25 +639,22 @@ def callBackConversations(conversation_leg, participant_attribute, queues, skill
         .distinct()
     )
 
-    callback_datetime = conversation_leg.withColumn(
-    "last_media_type", F.lag("Media_Type").over(window_spec)
-    ).select(
-    "Conversation_Id",
-    "Purpose",
-    "Media_Type",
-    "direction",
-    "last_media_type",
-    "segmentStart"
-    ).distinct()
+    callback_datetime = (conversation_leg
+                         .withColumn("last_media_type", F.lag("Media_Type").over(window_spec))
+                         .select("Conversation_Id",
+                                 "Purpose",
+                                 "Media_Type",
+                                 "direction",
+                                 "last_media_type",
+                                 "segmentStart").distinct())
 
     # call back date depends on purpose = 'agent' and the media_type = 'voice' this is the actual call segment where the agent speaks to the customer.
     callback_datetime = (callback_datetime
                          .filter((F.col("Purpose") == "agent") &
-             (F.col("Media_Type") == "voice") &
-             (F.col("last_media_type") == "callback") &
-             (F.col("direction") == "outbound")
-             )
-                         .withColumnRenamed("Conversation_Id", "callback_conv_id")
+                                (F.col("Media_Type") == "voice") &
+                                (F.col("last_media_type") == "callback") &
+                                (F.col("direction") == "outbound"))
+                        .withColumnRenamed("Conversation_Id", "callback_conv_id")
                         .withColumn("Callback_Date", F.to_date(F.col("segmentStart")))
                         .withColumn("Callback_Date_Key",F.regexp_replace(F.col("Callback_Date"), "-", "").cast("long"))
                         .withColumn("Callback_Time", F.date_format(F.col("segmentStart"), "HH:mm:ss:SSS"))
@@ -752,13 +671,8 @@ def callBackConversations(conversation_leg, participant_attribute, queues, skill
         queue_skill_details.join(queues, queue_skill_details.Queue == queues.id, "left")
         .join(skills, queue_skill_details.Skill == skills.skillId, "Left")
         .select(F.col("Conversation_Id").alias("conv_id"), "queue_name", "skill_name")
-        .distinct()
-    )
-
-    pa_data = (
-        participantAttributesExtract(participant_attribute)
-        .withColumnRenamed("conversationId", "conversationid")
-        .drop("LegId")
+        .groupby("conv_id").agg(F.max("queue_name").alias("queue_name"),
+                                F.max("skill_name").alias("skill_name"))
         .distinct()
     )
 
@@ -779,7 +693,12 @@ def callBackConversations(conversation_leg, participant_attribute, queues, skill
             "Abandon_Time",
             "Answered_Time",
             "ANI",
-            "DNIS"
+            "DNIS",
+            "Country_Code",
+            "Client_Brand",
+            "Commercial_Type",
+            "Call_Type",
+            "Planning_Unit",
         )
         .fillna(
             0,
@@ -817,8 +736,12 @@ def callBackConversations(conversation_leg, participant_attribute, queues, skill
             F.max(F.col("ANI")).alias("ANI"),
             F.max(F.col("DNIS")).alias("DNIS"),
             F.max("NTLOGIN").alias("NTLOGIN"),
-            F.max("Disconnect_Type").alias("Disconnect_Type")
-        )
+            F.max("Country_Code").alias("Country_Code"),
+            F.max("Client_Brand").alias("Client_Brand"),
+            F.max("Commercial_Type").alias("Commercial_Type"),
+            F.max("Call_Type").alias("Call_Type"),
+            F.max("Planning_Unit").alias("Planning_Unit"),
+            F.max("Disconnect_Type").alias("Disconnect_Type"))
         .withColumnRenamed("Conversation_Id", "ConversationId")
     )
 
@@ -827,11 +750,6 @@ def callBackConversations(conversation_leg, participant_attribute, queues, skill
             conversation_metricks_callback,
             call_back_sessions.Conversation_Id
             == conversation_metricks_callback.ConversationId,
-            "left",
-        )
-        .join(
-            pa_data,
-            call_back_sessions.Conversation_Id == pa_data.conversationid,
             "left",
         )
         .join(

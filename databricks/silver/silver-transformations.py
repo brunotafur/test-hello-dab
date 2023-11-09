@@ -30,8 +30,10 @@ def silver_conversation_snapshot():
     staging_conv_jobs = (staging_conv_jobs
                          .filter(((F.col("__START_AT").isNotNull()) & (F.col("__END_AT").isNull())))
                          .select("*", F.current_timestamp().alias("Last_Modified")))
+    participant_attributes = (dlt.read("stg_silver_participant_attributes")
+       .filter(((F.col("__START_AT").isNotNull()) & (F.col("__END_AT").isNull()))))
 
-    return silverConversationSnapshot(staging_conv_jobs)
+    return silverConversationSnapshot(staging_conv_jobs,participant_attributes)
 
 # COMMAND ----------
 
@@ -110,11 +112,16 @@ def silver_inbound_conversation_leg():
     "Pre_Request_Wait_Time",
     "Callback_Wait_Time"]
 
-    divisions = dlt.read("stg_silver_divisions")
-    conversation = dlt.read("silver_conversation_snapshot")
-    r_queue = dlt.read("stg_silver_routing_queues")
-    r_skill = dlt.read("stg_silver_routing_skills")
-    participant_attributes = dlt.read("stg_silver_participant_attributes")
+    divisions = (dlt.read("stg_silver_divisions")
+       .filter(((F.col("__START_AT").isNotNull()) & (F.col("__END_AT").isNull()))))
+    conversation = (dlt.read("silver_conversation_snapshot")
+       .filter(((F.col("__START_AT").isNotNull()) & (F.col("__END_AT").isNull()))))
+    r_queue = (dlt.read("stg_silver_routing_queues")
+       .filter(((F.col("__START_AT").isNotNull()) & (F.col("__END_AT").isNull()))))
+    r_skill = (dlt.read("stg_silver_routing_skills")
+       .filter(((F.col("__START_AT").isNotNull()) & (F.col("__END_AT").isNull()))))
+    participant_attributes = (dlt.read("stg_silver_participant_attributes")
+       .filter(((F.col("__START_AT").isNotNull()) & (F.col("__END_AT").isNull()))))
 
     return inboundOutboundLegs(
         conversation = conversation,
