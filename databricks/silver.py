@@ -4,37 +4,134 @@ from pyspark.sql import DataFrame
 from pyspark.sql.types import *
 from utility import *
 import dlt
-
-#to get the required data from participant attributes json data
+# to get the required data from participant attributes json data
 def participantAttributesExtract(df: DataFrame) -> DataFrame:
     """
     df - The staging silver participant attributes - return a dataframe with only required data
     eg: pa = participantAttributesExtract(df)
     return: dataframe
     """
-    pa = flatten(df)
-    pa = (
-        pa.withColumnRenamed("participantId", "participant_Id")
-        .withColumnRenamed("CountryCode", "Country_Code")
-        .withColumnRenamed("ClientBrand", "Client_Brand")
-        .withColumnRenamed("CallType", "Call_Type")
-        .withColumnRenamed("CommercialType", "Commercial_Type")
-        .withColumnRenamed("PlanningUnit", "Planning_Unit")
+
+    json_schema = StructType(
+        [
+            StructField("participantPurpose", StringType(), True),
+            StructField(
+                "participantAttributes",
+                StructType(
+                    [
+                        StructField("Log", StringType(), True),
+                        StructField("LegId", StringType(), True),
+                        StructField("NTLogin", StringType(), True),
+                        StructField("VDN", StringType(), True),
+                        StructField("DNIS", StringType(), True),
+                        StructField("Skill", StringType(), True),
+                        StructField("custCLI", StringType(), True),
+                        StructField("Schedule", StringType(), True),
+                        StructField("Whisper ", StringType(), True),
+                        StructField("scriptId", StringType(), True),
+                        StructField("CallType ", StringType(), True),
+                        StructField("CommercialType", StringType(), True),
+                        StructField("ClientBrand", StringType(), True),
+                        StructField("DNIS Name", StringType(), True),
+                        StructField("Priority ", StringType(), True),
+                        StructField("Location", StringType(), True),
+                        StructField("HoldMusic", StringType(), True),
+                        StructField("HolidayMsg", StringType(), True),
+                        StructField("WelcomeMsg", StringType(), True),
+                        StructField("CustomerANI", StringType(), True),
+                        StructField("QueueName", StringType(), True),
+                        StructField("SalesType", StringType(), True),
+                        StructField("TargetType", StringType(), True),
+                        StructField("CountryCode", StringType(), True),
+                        StructField("Flow Status", StringType(), True),
+                        StructField("LOG_QUEUEID", StringType(), True),
+                        StructField("SubMenuName ", StringType(), True),
+                        StructField("SurveyOptIn", StringType(), True),
+                        StructField("NoSurveyOptIn", StringType(), True),
+                        StructField("EmergencyMsg", StringType(), True),
+                        StructField("ScheduleGroup", StringType(), True),
+                        StructField("SurveyNTLogin", StringType(), True),
+                        StructField("SurveyCriteria", StringType(), True),
+                        StructField("SurveyTimeZone", StringType(), True),
+                        StructField("SurveySim", StringType(), True),
+                        StructField("BusinessStatus", StringType(), True),
+                        StructField("ComfortMessage1", StringType(), True),
+                        StructField("ComfortMessage2", StringType(), True),
+                        StructField("SurveyContactListId", StringType(), True),
+                        StructField("SurveyUpdateContastList", StringType(), True),
+                        StructField("PlanningUnit ", StringType(), True),
+                        StructField("ScreenPopName", StringType(), True),
+                        StructField("AlbaniaXferMsg", StringType(), True),
+                        StructField("Closed Message", StringType(), True),
+                        StructField("Schedule Group", StringType(), True),
+                        StructField("DisconnectAudio", StringType(), True),
+                        StructField("Emergency Group", StringType(), True),
+                        StructField("Holiday Message", StringType(), True),
+                        StructField("MenuTargetValue ", StringType(), True),
+                        StructField("Survey Workflow", StringType(), True),
+                        StructField("Survey", StringType(), True),
+                        StructField("Welcome Message", StringType(), True),
+                        StructField("Deflection Status", StringType(), True),
+                        StructField("Deflection Message", StringType(), True),
+                        StructField("ExternalXferNumber ", StringType(), True),
+                        StructField("Routing_Decision_DT", StringType(), True),
+                        StructField("Albania Xfer Message", StringType(), True),
+                        StructField("External Xfer Number", StringType(), True),
+                        StructField("CallRecording Message", StringType(), True),
+                        StructField("Information Message 2", StringType(), True),
+                        StructField("Informational Message", StringType(), True),
+                        StructField("Emergency Announcement", StringType(), True),
+                        StructField("Tirana Emergency Check", StringType(), True),
+                        StructField("varRoutingDecisionName", StringType(), True),
+                        StructField("Queue Deflection Status", StringType(), True),
+                        StructField("Queue_Deflection_Status", StringType(), True),
+                        StructField("Queue Deflection Message", StringType(), True),
+                        StructField("Deflection Schedule Group", StringType(), True),
+                        StructField("Log_LegWorkflowStart", StringType(), True),
+                        StructField("Log_ConversationCheck", StringType(), True),
+                        StructField("Log_LegWorkflowComplete", StringType(), True),
+                        StructField("Log_SurveyWorkflowStartTime", StringType(), True),
+                        StructField(
+                            "Queue Deflection Schedule Group", StringType(), True
+                        ),
+                        StructField("ivr.Priority", StringType(), True),
+                        StructField("ivr.Skills", StringType(), True),
+                    ]
+                ),
+                True,
+            ),
+            StructField("participantId", StringType(), True),
+            StructField("sessionIds", ArrayType(StringType(), True), True),
+        ]
     )
 
-    return (
-        pa.select(
-            "LegId",
-            "participant_Id",
-            "Country_Code",
-            "Client_Brand",
-            "Commercial_Type",
-            "Call_Type",
-            "Planning_Unit",
-        )
-        .filter(F.col("LegId").isNotNull())
-        .distinct()
+    columns_to_drop = [
+        "_type",
+        "divisionIds",
+        "endTime",
+        "organizationId",
+        "participantData",
+        "startTime",
+        "catalog_year",
+        "catalog_month",
+        "catalog_day",
+        "_rescued_data",
+        "file_name",
+        "file_path",
+        "file_modification_time",
+        "__START_AT",
+        "__END_AT",
+        "ExternalXferNumber",
+        "Queue_Deflection_Status",
+    ]
+
+    pa = df.withColumn(
+        "participant_data_struct",
+        F.from_json(F.col("participantData"), ArrayType(json_schema)),
     )
+    pa_final = replaceUnsupportedColumnNames(flatten(pa)).distinct()
+
+    return pa_final
 
 def silverConversationParticipantSnapshot(conversations: DataFrame, part_attributes: DataFrame) -> DataFrame:
     """
@@ -184,6 +281,26 @@ def silverConversationParticipantSnapshot(conversations: DataFrame, part_attribu
     ]
 
     conversations_divsions = (conversations.withColumn("primary_division_id", F.col("divisionIds")[0]))
+    pa = participantAttributesExtract(part_attributes)
+    legid_lookup = (pa
+                    .select("LegId", "participantId")
+                    .withColumnRenamed("participantId", "participant_Id")
+                    .withColumnRenamed("LegId", "Leg_Id")
+                    .filter(F.col("Leg_Id").isNotNull())
+                    .distinct()
+                        )
+    p_attrubutes_lookup = (
+        pa
+        .withColumnRenamed("conversationId", "convId")
+        .groupBy("convId")
+        .agg(F.max("CountryCode").alias("Country_Code"),
+             F.max("ClientBrand").alias("Client_Brand"),
+             F.max("CallType").alias("Call_Type"),
+             F.max("CommercialType").alias("Commercial_Type"),
+             F.max("PlanningUnit").alias("Planning_Unit"),
+             F.max("NTLogin").alias("NTLOGIN"))
+        .distinct()
+        )
     p_attributes = (participantAttributesExtract(part_attributes).withColumnRenamed("LegId", "Leg_Id"))
     
     conversation_job_flattened = (
@@ -195,8 +312,11 @@ def silverConversationParticipantSnapshot(conversations: DataFrame, part_attribu
     )
 
     conversation_part = (conversation_job_flattened
-                    .join(p_attributes, conversation_job_flattened.participantId == p_attributes.participant_Id,"leftouter")
-                    .drop("participantId", "participant_Id","LegId")
+                    .join(legid_lookup, 
+                          conversation_job_flattened.participantId == legid_lookup.participant_Id,"leftouter")
+                    .join(p_attrubutes_lookup, 
+                          conversation_job_flattened.conversationId == p_attrubutes_lookup.convId,"leftouter")
+                    .drop("participantId", "participant_Id","LegId", "convId")
                     .distinct())
 
     Conversation_jobs = (
@@ -205,7 +325,6 @@ def silverConversationParticipantSnapshot(conversations: DataFrame, part_attribu
         )
         .withColumn("conversationEnd", F.to_timestamp(F.col("conversationEnd"), "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"))
         .withColumnRenamed("conversationId", "Conversation_Id")
-        .withColumnRenamed("NTLogin", "NTLOGIN")
         .withColumn("Conversation_Date", F.to_date(F.col("conversationStart")))
         .withColumn("Conversation_End_Date", F.to_date(F.col("conversationEnd")))
         .withColumn("Conversation_Date_Key",  F.regexp_replace(F.col("Conversation_Date"), "-", "").cast("long"))
@@ -296,7 +415,6 @@ def silverConversationParticipantSnapshot(conversations: DataFrame, part_attribu
 #Tranformation of relevent data from all source to Inbound/outbound legs
 def inboundOutboundLegs(
     conversation: DataFrame,
-    partition_attributes: DataFrame,
     divisions: DataFrame,
     routing_queues: DataFrame,
     routing_skills: DataFrame,
@@ -308,7 +426,6 @@ def inboundOutboundLegs(
     Tranformation of relevent data from all source to Inbound/outbound legs
 
     Parameters: conversation: DataFrame -> silver conversation snapshot dataframe
-                partition_attributes: DataFrame -> partition attributes dataframe
                 divisions: DataFrame -> Division dataframe
                 routing_queues: DataFrame -> Routing Queues
                 routing_skills: DataFrame -> Routing Skills dataframe
@@ -317,118 +434,159 @@ def inboundOutboundLegs(
     Returns : Dataframe with Inbound/Outbound tranformations
 
     """
-    divisions = (div.select("id", "name", F.substring(F.col("name"), -2, 2).alias("Timezone")).distinct())
-    conversation = (conv.filter((F.col("originatingDirection") == "inbound") & 
+    #get timezone from divisions table
+    divisions = (divisions.select("id", "name", F.substring(F.col("name"), -2, 2).alias("Timezone")).distinct())
+    #load conversation legs after filteing out on callback and direction as required / Note all legid in null should be neglated
+    conversation = (conversation.filter((F.col("originatingDirection") == direction) & 
                         (F.col("Media_Type") != "callback") & 
                         (F.col("Leg_Id").isNotNull())
                         )) 
-    r_queue = (rq.select(F.col("id").alias("Queue_ID"), F.col("name").alias("Queue_Name")).distinct())
-    r_skills = (rs.select(F.col("id").alias("Skill_ID"), F.col("name").alias("Skill_Name")).distinct()) 
-    p_attributes = (participantAttributesExtract(pa).withColumnRenamed("LegId", "legid"))
+    #get timezone from queue name from queues data
+    r_queue = (routing_queues.select(F.col("id").alias("Queue_ID"), F.col("name").alias("Queue_Name")).distinct())
+    #get timezone from skill name from skills data
+    r_skills = (routing_skills.select(F.col("id").alias("Skill_ID"), F.col("name").alias("Skill_Name")).distinct()) 
 
-    ani_window_spec = Window.partitionBy("ANI").orderBy("conversationStart")
-    ddi_window_spec = Window.partitionBy("DDI").orderBy("conversationStart")
-
-
-    conversation_leg = (conversation
-                    .join(divisions, conversation.primary_division_id == divisions.id, "left")
-                    .join(r_queue, conversation.Queue == r_queue.Queue_ID, "left")
-                    .join(r_skills, conversation.Skill == r_skills.Skill_ID, "left")
-                    .drop("Queue", "Skill")
-                    )
+    #window specs to get last contact details by customer
+    ani_window_spec = Window.partitionBy("ANI").orderBy("segmentStart")
+    ddi_window_spec = Window.partitionBy("DDI").orderBy("segmentStart")
 
 
-
-    conversation_agg = (
-    conversation_leg
-    .fillna(
-        0,
-        subset=[
-            "Dialing_Time",
-            "Contacting_Time",
-            "Talk_Time",
-            "Held_Time",
-            "ACW_Time",
-            "Handle_Time",
-            "Monitoring_Time",
-            "Voice_Mail_Time",
-            "Transferred",
-            "Transferred_Blind",
-            "CoBrowse",
-            "Consult",
-            "Transferred_Consult",
-            "Connected",
-            "Answered_Time",
-            "Wait_Time",
-            "Short_Abandon_Time",
-            "Agent_Response_Time",
-            "Not_Responding_Time",
-            "User_Response_Time",
-            "Abandon_Time",
-            "ACD_Time",
-            "Over_SLA",
-            "Offered",
-            "Alert_Time"
-        ],
+    conversation_time_agg = (
+    conversation.select(
+        F.col("Leg_Id").alias("leg_id"),
+        "Dialing_Time",
+        "Contacting_Time",
+        "Talk_Time",
+        "ACW_Time",
+        "Handle_Time",
+        "Monitoring_Time",
+        "Voice_Mail_Time",
+        "Held_Time",
+        "Answered_Time",
+        "Abandon_Time",
+        "Short_Abandon_Time",
+        "Agent_Response_Time",
+        "Not_Responding_Time",
+        "User_Response_Time",
+        "IVR_Time",
+        "Wait_Time",
+        "ACD_Time",
+        "Alert_Time",
     )
-    .distinct())
-
-    conversation_agg = (conversation_agg
-                    .groupBy(
-                        "Leg_Id", 
-                        "Conversation_Id",
-                        "conversationStart",
-                        "Conversation_Date",
-                        "Conversation_Date_Key",
-                        "Conversation_Start_Time",
-                        "Conversation_Start_Key",
-                        "Conversation_End_Time",
-                        "Conversation_End_Key",
-                        "Timezone",
-                        "Country_Code",
-                        "Client_Brand",
-                        "Commercial_Type",
-                        "Call_Type",
-                        "Planning_Unit")
-                    .agg(
-                        F.min("Leg_Start_Time").alias("Leg_Start_Time"),
-                        F.max("Leg_End_Time").alias("Leg_End_Time"),
-                        F.sum("Dialing_Time").alias("Dialing_Time"),
-                        F.sum("Contacting_Time").alias("Contacting_Time"),
-                        F.sum("Talk_Time").alias("Talk_Time"),
-                        F.sum("ACW_Time").alias("ACW_Time"),
-                        F.sum("Handle_Time").alias("Handle_Time"),
-                        F.sum("Monitoring_Time").alias("Monitoring_Time"),
-                        F.sum("Voice_Mail_Time").alias("Voice_Mail_Time"),
-                        F.sum("Held_Time").alias("Held_Time"),
-                        F.max("Transferred").alias("Transferred"),
-                        F.max("Transferred_Blind").alias("Transferred_Blind"),
-                        F.max("Conference").alias("Conference"),
-                        F.max("CoBrowse").alias("CoBrowse"),
-                        F.max("Consult").alias("Consult"),
-                        F.max("Transferred_Consult").alias("Transferred_Consult"),
-                        F.max("Connected").alias("Connected"),
-                        F.sum("Answered_Time").alias("Answered_Time"),
-                        F.sum("Abandon_Time").alias("Abandon_Time"),
-                        F.sum("Short_Abandon_Time").alias("Short_Abandon_Time"),
-                        F.sum("Agent_Response_Time").alias("Agent_Response_Time"),
-                        F.sum("Not_Responding_Time").alias("Not_Responding_Time"),
-                        F.sum("User_Response_Time").alias("User_Response_Time"),
-                        F.sum("IVR_Time").alias("IVR_Time"),
-                        F.max("Disconnect_Type").alias("Disconnect_Type"),
-                        F.sum("Wait_Time").alias("Wait_Time"),
-                        F.sum("ACD_Time").alias("ACD_Time"),
-                        F.max("Offered").alias("Offered"),
-                        F.max("Over_SLA").alias("Over_SLA"),
-                        F.sum("Alert_Time").alias("Alert_Time"),
-                        F.max("Queue_Name").alias("Queue"),
-                        F.max("Skill_Name").alias("Skill"),
-                        F.max("NTLOGIN").alias("NTLOGIN"),
-                        F.max("destinationAddresses").alias("destinationAddresses"),
-                        F.max("ANI").alias("ANI"),
-                        F.max("DNIS").alias("DNIS"),
-                        F.max("DDI").alias("DDI"),
-                        F.max("AgentNTLogin").alias("AgentNTLogin")))
+    .distinct()
+    .fillna(0)
+    .groupBy("leg_id")
+    .agg(
+        F.sum("Dialing_Time").alias("Dialing_Time"),
+        F.sum("Contacting_Time").alias("Contacting_Time"),
+        F.sum("Talk_Time").alias("Talk_Time"),
+        F.sum("ACW_Time").alias("ACW_Time"),
+        F.sum("Handle_Time").alias("Handle_Time"),
+        F.sum("Monitoring_Time").alias("Monitoring_Time"),
+        F.sum("Voice_Mail_Time").alias("Voice_Mail_Time"),
+        F.sum("Held_Time").alias("Held_Time"),
+        F.sum("Answered_Time").alias("Answered_Time"),
+        F.sum("Abandon_Time").alias("Abandon_Time"),
+        F.sum("Short_Abandon_Time").alias("Short_Abandon_Time"),
+        F.sum("Agent_Response_Time").alias("Agent_Response_Time"),
+        F.sum("Not_Responding_Time").alias("Not_Responding_Time"),
+        F.sum("User_Response_Time").alias("User_Response_Time"),
+        F.sum("IVR_Time").alias("IVR_Time"),
+        F.sum("Wait_Time").alias("Wait_Time"),
+        F.sum("ACD_Time").alias("ACD_Time"),
+        F.sum("Alert_Time").alias("Alert_Time")
+        )
+    )
+    conversation_leg_attributes = (
+    conversation.select(
+        "Leg_Id",
+        "Conversation_Id",
+        "conversationStart",
+        "Conversation_Date",
+        "Conversation_Date_Key",
+        "Conversation_Start_Time",
+        "Conversation_Start_Key",
+        "Conversation_End_Time",
+        "Conversation_End_Key",
+        "segmentStart",
+        "Leg_Start_Time",
+        "Leg_End_Time",
+        "Transferred",
+        "Transferred_Blind",
+        "Conference",
+        "CoBrowse",
+        "Consult",
+        "Transferred_Consult",
+        "Connected",
+        "Disconnect_Type",
+        "Offered",
+        "Over_SLA",
+        "NTLOGIN",
+        "destinationAddresses",
+        "ANI",
+        "DNIS",
+        "DDI",
+        "AgentNTLogin",
+        "Country_Code",
+        "Client_Brand",
+        "Commercial_Type",
+        "Call_Type",
+        "Planning_Unit",
+        "Queue",
+        "Skill",
+        "primary_division_id"
+    )
+    .distinct()
+    .fillna(0)
+    .groupBy(
+        "Leg_Id",
+        "Conversation_Id",
+        "conversationStart",
+        "Conversation_Date",
+        "Conversation_Date_Key",
+        "Conversation_Start_Time",
+        "Conversation_Start_Key",
+        "Conversation_End_Time",
+        "Conversation_End_Key")
+    .agg(
+        F.min("segmentStart").alias("segmentStart"),
+        F.min("Leg_Start_Time").alias("Leg_Start_Time"),
+        F.max("Leg_End_Time").alias("Leg_End_Time"),
+        F.max("Transferred").alias("Transferred"),
+        F.max("Transferred_Blind").alias("Transferred_Blind"),
+        F.max("Conference").alias("Conference"),
+        F.max("CoBrowse").alias("CoBrowse"),
+        F.max("Consult").alias("Consult"),
+        F.max("Transferred_Consult").alias("Transferred_Consult"),
+        F.max("Connected").alias("Connected"),
+        F.max("Disconnect_Type").alias("Disconnect_Type"),
+        F.max("Offered").alias("Offered"),
+        F.max("Over_SLA").alias("Over_SLA"),
+        F.max("NTLOGIN").alias("NTLOGIN"),
+        F.max("destinationAddresses").alias("destinationAddresses"),
+        F.max("ANI").alias("ANI"),
+        F.max("DNIS").alias("DNIS"),
+        F.max("DDI").alias("DDI"),
+        F.max("AgentNTLogin").alias("AgentNTLogin"),
+        F.max("Country_Code").alias("Country_Code"),
+        F.max("Client_Brand").alias("Client_Brand"),
+        F.max("Commercial_Type").alias("Commercial_Type"),
+        F.max("Call_Type").alias("Call_Type"),
+        F.max("Planning_Unit").alias("Planning_Unit"),
+        F.max("Queue").alias("Queue"),
+        F.max("Skill").alias("Skill"),
+        F.max("primary_division_id").alias("primary_division_id")
+        )
+    )
+    conversation_agg = (conversation_leg_attributes
+                .join(conversation_time_agg, conversation_leg_attributes.Leg_Id == conversation_time_agg.leg_id, "left")
+                .join(divisions, conversation_leg_attributes.primary_division_id == divisions.id, "left")
+                .join(r_queue, conversation_leg_attributes.Queue == r_queue.Queue_ID, "left")
+                .join(r_skills, conversation_leg_attributes.Skill == r_skills.Skill_ID, "left")
+                .drop("Queue", "Skill", "leg_id")
+                .withColumnRenamed("Queue_Name","Queue")
+                .withColumnRenamed("Skill_Name","Skill")
+                )
 
     if direction == "inbound":
 
@@ -483,13 +641,13 @@ def inboundOutboundLegs(
             .withColumn("Customer_Contact_Sequence", (F.when(F.col("ANI").isNotNull(), F.row_number().over(ani_window_spec))
                                                       .otherwise(F.when(F.col("DDI").isNotNull(), F.row_number().over(ddi_window_spec)).otherwise(None)))
                         )
-            .withColumn("Previous_Contact_DateTime", (F.when(F.col("ANI").isNotNull(), F.lag("conversationStart", 1).over(ani_window_spec))
-                                                      .otherwise(F.when(F.col("DDI").isNotNull(), F.lag("conversationStart", 1).over(ddi_window_spec)
+            .withColumn("Previous_Contact_DateTime", (F.when(F.col("ANI").isNotNull(), F.lag("segmentStart", 1).over(ani_window_spec))
+                                                      .otherwise(F.when(F.col("DDI").isNotNull(), F.lag("segmentStart", 1).over(ddi_window_spec)
                                                                         ).otherwise(None)))
             )
             .withColumn(
                 "Delta_Contact_DateTime",
-                F.col("conversationStart").cast("long")
+                F.col("segmentStart").cast("long")
                 - F.col("Previous_Contact_DateTime").cast("long")
             )
             .withColumn("Callback_Request", F.lit("null"))
@@ -569,7 +727,7 @@ def inboundOutboundLegs(
         )
         )
 
-        return final.select(*column_list)
+        return final.select(*column_list).distinct()
     
 def callBackConversations(conversation_leg, queues, skills, user):
     """
