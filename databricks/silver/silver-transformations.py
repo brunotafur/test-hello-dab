@@ -1198,6 +1198,7 @@ def silver_outbound_conversation_leg():
         "Transfer_Agent_NTLOGIN",
         "Conference",
         "CoBrowse",
+        "Consult"
     ]
     divisions = (dlt.read("stg_silver_divisions")
        .filter(((F.col("__START_AT").isNotNull()) & (F.col("__END_AT").isNull()))))
