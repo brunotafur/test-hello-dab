@@ -1,8 +1,11 @@
+# Databricks notebook source
 from pyspark.sql.window import Window
 import pyspark.sql.functions as F
 from pyspark.sql import DataFrame
 from pyspark.sql.types import *
-from utility import *
+import dlt
+
+# COMMAND ----------
 
 def goldInboundConversationLeg(silver_inbound_legs, columns_to_group):
 
@@ -62,3 +65,59 @@ def goldInboundConversationLeg(silver_inbound_legs, columns_to_group):
           )
     return final
 
+# COMMAND ----------
+
+# DBTITLE 1,Gold Inbound Conversation Leg
+@dlt.table(comment="Pipeline - gold_inbound_conversation_leg")
+def gold_inbound_conversation_leg():
+
+    s_inbound = dlt.read("silver_inbound_conversation_leg")#silver inbound data
+    
+    cols_agent_to_group = [
+    "Conversation_Date",
+    "Transfer_Leg",
+    "Leg_Ordinal",
+    "Alternate_Leg_Flag",
+    "DNIS",
+    "Country_Code",
+    "Client_Brand",
+    "Commercial_Type",
+    "Call_Type",
+    "Planning_Unit",
+    "Queue",
+    "Employee_Key",
+    "Disconnect_Type",
+    "Transfer_Queue",
+    "Transfer_DDI",
+    ]
+    
+    return goldInboundConversationLeg(s_inbound, cols_agent_to_group)
+
+# COMMAND ----------
+
+@dlt.table(comment="Pipeline - gold_inbound_conversation_leg_interval")
+def gold_inbound_conversation_leg_interval():
+
+    s_inbound = dlt.read("silver_inbound_conversation_leg")#silver inbound data
+    
+    cols_com_plan_to_group = [
+    "Conversation_Date",
+    "Transfer_Leg",
+    "Leg_Ordinal",
+    "Alternate_Leg_Flag",
+    "Timezone",
+    "Time_Interval",
+    "DNIS",
+    "Country_Code",
+    "Client_Brand",
+    "Commercial_Type",
+    "Call_Type",
+    "Planning_Unit",
+    "Queue",
+    "Skill",
+    "Organisation",
+    "Transfer_Queue",
+    "Transfer_DDI"
+    ]
+    
+    return goldInboundConversationLeg(s_inbound, cols_com_plan_to_group)

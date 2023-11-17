@@ -5,6 +5,7 @@ from pyspark.sql.types import *
 from utility import *
 import dlt
 # to get the required data from participant attributes json data
+# to get the required data from participant attributes json data
 def participantAttributesExtract(df: DataFrame) -> DataFrame:
     """
     df - The staging silver participant attributes - return a dataframe with only required data
@@ -123,13 +124,14 @@ def participantAttributesExtract(df: DataFrame) -> DataFrame:
         "__END_AT",
         "ExternalXferNumber",
         "Queue_Deflection_Status",
+        "sessionIds"
     ]
 
     pa = df.withColumn(
         "participant_data_struct",
         F.from_json(F.col("participantData"), ArrayType(json_schema)),
     )
-    pa_final = replaceUnsupportedColumnNames(flatten(pa)).distinct()
+    pa_final = replaceUnsupportedColumnNames(flatten(pa)).drop(*columns_to_drop).distinct()
 
     return pa_final
 
@@ -939,76 +941,25 @@ def callBackConversations(conversation_leg, queues, skills, user):
 
 def silverConversationParticipantAttributes(df):
 
-    # try:
-    pa = (
-    (
-    df.withColumnRenamed("conversationId", "Conversation_Id").withColumn(
-    "participant_data_extract", F.explode(F.col("participantData"))
-    )
-    )
-    .select(
-    "Conversation_Id", "participant_data_extract.participantAttributes.*"
-    )
-    .withColumnRenamed("LegId", "Leg_Id")
-    .withColumnRenamed("ivr.Skills", "ivr_Skills")
-    .withColumnRenamed("ivr.Priority", "ivr_Priority")
-    .filter(F.col("Leg_Id").isNotNull())
-    )
+    participant_attributes = (participantAttributesExtract(df)
+    .withColumn("Leg_Id",
+        F.when(F.col("LegId").isNull(), F.concat(F.col("conversationId"), F.lit("-1"))).otherwise(F.col("LegId")),)
+    .withColumnRenamed("conversationId", "Conversation_Id")
+    .drop("participantPurpose", "participantId", "LegId","ScheduleGroup"))
+
+    pivot_columns = [col_name for col_name in participant_attributes.columns if col_name not in ("Conversation_Id", "Leg_Id")]
+
+    participant_attributes_agg = (participant_attributes
+                                  .groupBy("Conversation_Id", "Leg_Id")
+                                  .agg(*[F.max(col_name).alias(col_name) for col_name in pivot_columns]))
     
-    participant_attributes = pa.groupBy("Conversation_Id", "Leg_Id").agg(
-    F.max("CustomerANI").alias("CustomerANI"),
-    F.max("CallType").alias("CallType"),
-    F.max("CountryCode").alias("CountryCode"),
-    F.max("ivr_Priority").alias("ivr_Priority"),
-    F.max("IVRSpare4").alias("IVRSpare4"),
-    F.max("Deflection").alias("Deflection"),
-    F.max("SMSMsgMobileIVR").alias("SMSMsgMobileIVR"),
-    F.max("IVRSpare2").alias("IVRSpare2"),
-    F.max("FoundQueueName").alias("FoundQueueName"),
-    F.max("Log").alias("Log"),
-    F.max("ClientBrand").alias("ClientBrand"),
-    F.max("Skill").alias("Skill"),
-    F.max("custCLI").alias("custCLI"),
-    F.max("ivr_Skills").alias("ivr_Skills"),
-    F.max("Whisper").alias("Whisper"),
-    F.max("DNIS").alias("DNIS"),
-    F.max("GDPR").alias("GDPR"),
-    F.max("Menu").alias("Menu"),
-    F.max("SMSNoMobMsgIVR").alias("SMSNoMobMsgIVR"),
-    F.max("ComfortMsg1").alias("ComfortMsg1"),
-    F.max("IVRSpare3").alias("IVRSpare3"),
-    F.max("ScheduleGroup").alias("ScheduleGroup"),
-    F.max("Log_LegWorkflowComplete").alias("Log_LegWorkflowComplete"),
-    F.max("PlanningUnit").alias("PlanningUnit"),
-    F.max("Priority").alias("Priority"),
-    F.max("HoldMusic").alias("HoldMusic"),
-    F.max("FoundSkillName").alias("FoundSkillName"),
-    F.max("Log_ConversationCheck").alias("Log_ConversationCheck"),
-    F.max("SMSLandlineMxg").alias("SMSLandlineMxg"),
-    F.max("SMSOptInPrompt").alias("SMSOptInPrompt"),
-    F.max("CBEWTSetting").alias("CBEWTSetting"),
-    F.max("DDI").alias("DDI"),
-    F.max("TIQValue").alias("TIQValue"),
-    F.max("IVRSpare1").alias("IVRSpare1"),
-    F.max("CommercialType").alias("CommercialType"),
-    F.max("TIQCheck").alias("TIQCheck"),
-    F.max("NoMobOffPromptSD").alias("NoMobOffPromptSD"),
-    F.max("varEndpointName").alias("varEndpointName"),
-    F.max("scriptId").alias("scriptId"),
-    F.min("Log_LegWorkflowStart").alias("Log_LegWorkflowStart"),
-    F.max("ScreenPopName").alias("ScreenPopName"),
-    F.max("VDN").alias("VDN"),
-    F.max("NoSurveyOptIn").alias("NoSurveyOptIn"),
-    )
-    
-    # list of participant attribute to be pivoted
-    pivot_columns = [col_name for col_name in participant_attributes.columns if col_name not in ("Conversation_Id", "Leg_Id")]  
     stack_list = [f"'{col_name}', {col_name}," for col_name in pivot_columns]  # string to pass to stack expr
     stack_string = "".join(stack_list)[:-1]
 
-    participant_attributes_pivot = participant_attributes.selectExpr(
+    participant_attributes_pivot = participant_attributes_agg.selectExpr(
     "Conversation_Id",
     "Leg_Id",
     f"stack({len(pivot_columns)}, {stack_string}) as (attribute_name, attribute_value)",
     )
+    
     return participant_attributes_pivot
