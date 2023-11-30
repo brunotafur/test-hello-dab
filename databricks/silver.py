@@ -124,18 +124,26 @@ def participantAttributesExtract(df: DataFrame) -> DataFrame:
         "__END_AT",
         "ExternalXferNumber",
         "Queue_Deflection_Status",
-        "sessionIds"
+        "sessionIds",
+        "LegId"
     ]
 
     pa = df.withColumn(
         "participant_data_struct",
         F.from_json(F.col("participantData"), ArrayType(json_schema)),
     )
-    pa_final = replaceUnsupportedColumnNames(flatten(pa)).drop(*columns_to_drop).distinct()
+    pa_with_legid = (flatten(pa)
+                     .withColumn("Legid",F.when(F.col("LegId").isNull(), 
+                                                F.concat(F.col("conversationId"), F.lit("-1"))).otherwise(F.col("LegId"))
+                                 )
+                     )
+    pa_final = replaceUnsupportedColumnNames(pa_with_legid).drop(*columns_to_drop).distinct()
 
     return pa_final
 
-def silverConversationParticipantSnapshot(conversations: DataFrame, part_attributes: DataFrame) -> DataFrame:
+def silverConversationParticipantSnapshot(conversations: DataFrame, 
+                                          part_attributes: DataFrame, 
+                                          divisions: DataFrame) -> DataFrame:
     """
     Contains all data extracted conversation jobs - Used as the source for all other Silver table
     Returns : Dataframe
@@ -279,53 +287,49 @@ def silverConversationParticipantSnapshot(conversations: DataFrame, part_attribu
         "Client_Brand",
         "Commercial_Type",
         "Call_Type",
-        "Planning_Unit"    
+        "Planning_Unit",
+        "Timezone"   
     ]
 
-    conversations_divsions = (conversations.withColumn("primary_division_id", F.col("divisionIds")[0]))
+    conversations = (conversations.withColumn("primary_division_id", F.col("divisionIds")[0]))
+    #get timezone from divisions table
+    divisions = (divisions.select("id", "name", F.substring(F.col("name"), -2, 2).alias("Timezone")).drop("name").distinct())
+    #join converstaion with division to get the timezone
+    conversations_divisions = (conversations
+                               .join(divisions, conversations.primary_division_id == divisions.id, "left"))
     pa = participantAttributesExtract(part_attributes)
-    legid_lookup = (pa
-                    .select("LegId", "participantId")
-                    .withColumnRenamed("participantId", "participant_Id")
-                    .withColumnRenamed("LegId", "Leg_Id")
-                    .filter(F.col("Leg_Id").isNotNull())
-                    .distinct()
-                        )
-    p_attrubutes_lookup = (
-        pa
-        .withColumnRenamed("conversationId", "convId")
-        .groupBy("convId")
-        .agg(F.max("CountryCode").alias("Country_Code"),
-             F.max("ClientBrand").alias("Client_Brand"),
-             F.max("CallType").alias("Call_Type"),
-             F.max("CommercialType").alias("Commercial_Type"),
-             F.max("PlanningUnit").alias("Planning_Unit"),
-             F.max("NTLogin").alias("NTLOGIN"))
-        .distinct()
+
+    p_attrubutes_lookup = (pa
+                           .withColumnRenamed("conversationId", "convId")
+                            .withColumnRenamed("participantId", "participant_Id")
+                            .withColumnRenamed("Legid", "Leg_Id")
+                            .withColumnRenamed("CountryCode", "Country_Code")
+                            .withColumnRenamed("ClientBrand", "Client_Brand")
+                            .withColumnRenamed("CommercialType", "Commercial_Type")
+                            .withColumnRenamed("CallType", "Call_Type")
+                            .withColumnRenamed("PlanningUnit", "Planning_Unit")
+                            .select("participant_Id","Leg_Id","Country_Code","Client_Brand","Call_Type","Commercial_Type","Planning_Unit")
+                            .distinct()
         )
-    p_attributes = (participantAttributesExtract(part_attributes).withColumnRenamed("LegId", "Leg_Id"))
     
     conversation_job_flattened = (
-        flatten(conversations_divsions)
+        flatten(conversations_divisions)
         .withColumnRenamed("ivr.Priority", "ivr_Priority")
         .withColumnRenamed("ivr.Skills", "ivr_Skills")
         .drop(*cols_to_drop_after_explode)
         .distinct()
     )
 
-    conversation_part = (conversation_job_flattened
-                    .join(legid_lookup, 
-                          conversation_job_flattened.participantId == legid_lookup.participant_Id,"leftouter")
+    conversation_in_local_time = ConvertToLocaltime(["conversationStart", "conversationEnd","segmentStart","segmentEnd"],conversation_job_flattened)
+
+    conversation_participant_attributes = (conversation_in_local_time
                     .join(p_attrubutes_lookup, 
-                          conversation_job_flattened.conversationId == p_attrubutes_lookup.convId,"leftouter")
+                          conversation_job_flattened.participantId == p_attrubutes_lookup.participant_Id,"leftouter")
                     .drop("participantId", "participant_Id","LegId", "convId")
                     .distinct())
 
     Conversation_jobs = (
-        conversation_part.withColumn("conversationStart",
-                                     F.to_timestamp(F.col("conversationStart"), "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"),
-        )
-        .withColumn("conversationEnd", F.to_timestamp(F.col("conversationEnd"), "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"))
+        conversation_participant_attributes
         .withColumnRenamed("conversationId", "Conversation_Id")
         .withColumn("Conversation_Date", F.to_date(F.col("conversationStart")))
         .withColumn("Conversation_End_Date", F.to_date(F.col("conversationEnd")))
@@ -347,6 +351,7 @@ def silverConversationParticipantSnapshot(conversations: DataFrame, part_attribu
         .withColumnRenamed("mediaType", "Media_Type")
         .withColumnRenamed("purpose", "Purpose")
         .withColumnRenamed("queueId", "Queue")
+        .withColumnRenamed("NTLogin", "NTLOGIN")
         .withColumnRenamed("requestedRoutingSkillIds", "Skill")
         .distinct()
     )
@@ -436,8 +441,7 @@ def inboundOutboundLegs(
     Returns : Dataframe with Inbound/Outbound tranformations
 
     """
-    #get timezone from divisions table
-    divisions = (divisions.select("id", "name", F.substring(F.col("name"), -2, 2).alias("Timezone")).distinct())
+    
     #load conversation legs after filteing out on callback and direction as required / Note all legid in null should be neglated
     conversation = (conversation.filter((F.col("originatingDirection") == direction) & 
                         (F.col("Media_Type") != "callback") & 
@@ -536,8 +540,21 @@ def inboundOutboundLegs(
         "Planning_Unit",
         "Queue",
         "Skill",
-        "primary_division_id"
+        "primary_division_id",
+        "Timezone"
     )
+    .withColumn("Transfer_Queue",F.when(F.col("Queue").isNotNull(), F.col("Queue")).otherwise(None))
+    .withColumn("Transfer_DDI",
+            F.when(
+                F.col("destinationAddresses").cast("double").isNotNull(),
+                F.col("destinationAddresses").cast("double"),
+            ).otherwise(None))
+    .withColumn("Transfer_Agent_NTLOGIN",
+            F.when(
+                F.col("destinationAddresses").startswith("sip:"), 
+                F.regexp_extract(F.col("destinationAddresses"), r"sip:(.*?)%", 1)
+            ).otherwise(None),
+        )
     .distinct()
     .fillna(0)
     .groupBy(
@@ -549,7 +566,8 @@ def inboundOutboundLegs(
         "Conversation_Start_Time",
         "Conversation_Start_Key",
         "Conversation_End_Time",
-        "Conversation_End_Key")
+        "Conversation_End_Key",
+        "Timezone")
     .agg(
         F.min("segmentStart").alias("segmentStart"),
         F.min("Leg_Start_Time").alias("Leg_Start_Time"),
@@ -561,11 +579,13 @@ def inboundOutboundLegs(
         F.max("Consult").alias("Consult"),
         F.max("Transferred_Consult").alias("Transferred_Consult"),
         F.max("Connected").alias("Connected"),
-        F.max("Disconnect_Type").alias("Disconnect_Type"),
+        F.last("Disconnect_Type", ignorenulls=True).alias("Disconnect_Type"),
         F.max("Offered").alias("Offered"),
         F.max("Over_SLA").alias("Over_SLA"),
         F.max("NTLOGIN").alias("NTLOGIN"),
-        F.max("destinationAddresses").alias("destinationAddresses"),
+        F.max("Transfer_Queue").alias("Transfer_Queue"),
+        F.max("Transfer_DDI").alias("Transfer_DDI"),
+        F.max("Transfer_Agent_NTLOGIN").alias("Transfer_Agent_NTLOGIN"),
         F.max("ANI").alias("ANI"),
         F.max("DNIS").alias("DNIS"),
         F.max("DDI").alias("DDI"),
@@ -582,7 +602,6 @@ def inboundOutboundLegs(
     )
     conversation_agg = (conversation_leg_attributes
                 .join(conversation_time_agg, conversation_leg_attributes.Leg_Id == conversation_time_agg.leg_id, "left")
-                .join(divisions, conversation_leg_attributes.primary_division_id == divisions.id, "left")
                 .join(r_queue, conversation_leg_attributes.Queue == r_queue.Queue_ID, "left")
                 .join(r_skills, conversation_leg_attributes.Skill == r_skills.Skill_ID, "left")
                 .drop("Queue", "Skill", "leg_id")
@@ -614,23 +633,6 @@ def inboundOutboundLegs(
         .withColumn("Leg_Start_Key",F.regexp_replace(F.col("Leg_Start_Time"), ":", "").cast("long"))
         .withColumn("Leg_End_Key", F.regexp_replace(F.col("Leg_End_Time"), ":", "").cast("long"))
         .withColumn(
-            "Transfer_Queue",
-            F.when(F.col("Queue").isNotNull(), F.col("Queue")).otherwise(None),
-        )
-        .withColumn(
-            "Transfer_DDI",
-            F.when(
-                F.col("destinationAddresses").cast("double").isNotNull(),
-                F.col("destinationAddresses").cast("double"),
-            ).otherwise(None),
-        )
-        .withColumn(
-            "Transfer_Agent_NTLOGIN",
-            F.when(
-                F.col("destinationAddresses").rlike("[a-zA-Z]"), F.col("AgentNTLogin")
-            ).otherwise(None),
-        )
-        .withColumn(
             "Handled",
             F.when(
                 (F.col("Answered_Time").isNull()) | (F.col("Answered_Time") == 0), 0
@@ -647,11 +649,14 @@ def inboundOutboundLegs(
                                                       .otherwise(F.when(F.col("DDI").isNotNull(), F.lag("segmentStart", 1).over(ddi_window_spec)
                                                                         ).otherwise(None)))
             )
-            .withColumn(
-                "Delta_Contact_DateTime",
-                F.col("segmentStart").cast("long")
-                - F.col("Previous_Contact_DateTime").cast("long")
-            )
+            .withColumn("last_contact_time_diff_millisec", F.col("segmentStart").cast("long") - F.col("Previous_Contact_DateTime").cast("long"))
+            .withColumn("days", expr("floor(last_contact_time_diff_millisec / (24 * 3600000))"))
+            .withColumn("hours", expr("floor((last_contact_time_diff_millisec % (24 * 3600000)) / 3600000)"))
+            .withColumn("minutes", expr("floor((last_contact_time_diff_millisec % 3600000) / 60000)"))
+            .withColumn("seconds", expr("floor((last_contact_time_diff_millisec % 60000) / 1000)"))
+            .withColumn("milliseconds", expr("last_contact_time_diff_millisec % 1000"))
+            .withColumn("Delta_Contact_DateTime",
+                        expr("concat_ws(':', lpad(days, 3, '0'), lpad(hours, 2,0), lpad(minutes,2, 0), lpad(seconds,2, 0)) || '.' || lpad(milliseconds, 3,0)"))
             .withColumn("Callback_Request", F.lit("null"))
             .withColumn("Callback_Handled", F.lit("null"))
             .withColumn("Callback_No_Answer", F.lit("null"))
@@ -684,23 +689,6 @@ def inboundOutboundLegs(
         )
         .withColumn("Leg_Start_Key",F.regexp_replace(F.col("Leg_Start_Time"), ":", "").cast("long"))
         .withColumn("Leg_End_Key", F.regexp_replace(F.col("Leg_End_Time"), ":", "").cast("long"))
-                 .withColumn(
-            "Transfer_Queue",
-            F.when(F.col("Queue").isNotNull(), F.col("Queue")).otherwise(None),
-        )
-        .withColumn(
-            "Transfer_DDI",
-            F.when(
-                F.col("destinationAddresses").cast("double").isNotNull(),
-                F.col("destinationAddresses").cast("double"),
-            ).otherwise(None),
-        )
-        .withColumn(
-            "Transfer_Agent_NTLOGIN",
-            F.when(
-                F.col("destinationAddresses").rlike("[a-zA-Z]"), F.col("AgentNTLogin")
-            ).otherwise(None),
-        )
         .withColumn(
             "Handled",
             F.when(
@@ -718,11 +706,14 @@ def inboundOutboundLegs(
                                                       .otherwise(F.when(F.col("DDI").isNotNull(), F.lag("conversationStart", 1).over(ddi_window_spec)
                                                                         ).otherwise(None)))
                         )
-            .withColumn(
-                "Delta_Contact_DateTime",
-                F.col("conversationStart").cast("long")
-                - F.col("Previous_Contact_DateTime").cast("long")
-            )
+            .withColumn("last_contact_time_diff_millisec", F.col("segmentStart").cast("long") - F.col("Previous_Contact_DateTime").cast("long"))
+            .withColumn("days", expr("floor(last_contact_time_diff_millisec / (24 * 3600000))"))
+            .withColumn("hours", expr("floor((last_contact_time_diff_millisec % (24 * 3600000)) / 3600000)"))
+            .withColumn("minutes", expr("floor((last_contact_time_diff_millisec % 3600000) / 60000)"))
+            .withColumn("seconds", expr("floor((last_contact_time_diff_millisec % 60000) / 1000)"))
+            .withColumn("milliseconds", expr("last_contact_time_diff_millisec % 1000"))
+            .withColumn("Delta_Contact_DateTime",
+                        expr("concat_ws(':', lpad(days, 3, '0'), lpad(hours, 2,0), lpad(minutes,2, 0), lpad(seconds,2, 0)) || '.' || lpad(milliseconds, 3,0)"))
             .withColumn("ACD_OB_Attempt", F.lit(1))
             .withColumn(
             "ACD_OB_Connected", F.when(F.col("Talk_Time").isNotNull(), 1).otherwise(0)
