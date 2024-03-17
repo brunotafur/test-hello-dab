@@ -1,0 +1,44 @@
+bundle:
+  name: databr-telephony
+
+resources:
+  jobs:
+    workflow-unit-tests:
+      name: workflow-unit-tests
+      tasks:
+        - task_key: hello-task
+          # existing_cluster_id: 1234-567890-abcde123
+          job_cluster_key: unit_tests_job_cluster
+          # notebook_task:
+          #   notebook_path: ./hello.py
+          spark_python_task:
+            python_file: ./hello.py
+      job_clusters:
+        - job_cluster_key: unit_tests_job_cluster
+          new_cluster:
+            spark_version: 13.3.x-scala2.12
+            node_type_id: i3.xlarge
+            autoscale:
+                min_workers: 1
+                max_workers: 4
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://dbc-1f36ff04-9e4c.cloud.databricks.com
+  qa:
+    workspace:
+      host: https://dbc-f65cc6b0-e206.cloud.databricks.com
+  prod:
+    workspace:
+      host: https://dbc-0dad052b-5b99.cloud.databricks.com
+
+# to validate task:
+# databricks bundle validate
+#
+# deploy in DEV:
+# databricks bundle deploy  
+#
+# RUN:
+# databricks bundle run   
