@@ -7,11 +7,11 @@ name: "DEV deployment"
 concurrency: 1
  
 # Trigger this workflow whenever a pull request is opened against the repo's
-# develop branch or an existing pull request's head branch is updated.
+# main branch or an existing pull request's head branch is updated.
 on:
   push:
     branches:
-      - develop
+      - main
  
 jobs:
   # Used by the "pipeline_update" job to deploy the bundle.
@@ -27,7 +27,7 @@ jobs:
  
       # Download the Databricks CLI.
       # See https://github.com/databricks/setup-cli
-      - uses: databricks/setup-cli@develop
+      - uses: databricks/setup-cli@main
  
       # Deploy the bundle to the "DEV" target as defined
       # in the bundle's settings file.
@@ -35,7 +35,7 @@ jobs:
         working-directory: .
         env:
           DATABRICKS_TOKEN: ${{ secrets.SF_TOKEN }}
-          DATABRICKS_BUNDLE_ENV: dev
+          DATABRICKS_BUNDLE_ENV: development
  
   # Validate, deploy, and then run the bundle.
   pipeline_update:
@@ -51,7 +51,7 @@ jobs:
       - uses: actions/checkout@v3
  
       # Use the downloaded Databricks CLI.
-      - uses: databricks/setup-cli@develop
+      - uses: databricks/setup-cli@main
  
       # Run the Databricks workflow named "dab_test_job" as defined in the
       # bundle that was just deployed.
@@ -59,7 +59,7 @@ jobs:
         working-directory: .
         env:
           DATABRICKS_TOKEN: ${{ secrets.SF_TOKEN }}
-          DATABRICKS_BUNDLE_ENV: dev
+          DATABRICKS_BUNDLE_ENV: development
 
 #GitHub - databricks/setup-cli: Sets up the Databricks CLI in your GitHub Actions workflow.
 #Sets up the Databricks CLI in your GitHub Actions workflow. - databricks/setup-cli
