@@ -7,7 +7,7 @@ name: "DEV deployment"
 concurrency: 1
  
 # Trigger this workflow whenever a pull request is opened against the repo's
-# main branch or an existing pull request's head branch is updated.
+# develop branch or an existing pull request's head branch is updated.
 on:
   push:
     branches:
@@ -27,7 +27,7 @@ jobs:
  
       # Download the Databricks CLI.
       # See https://github.com/databricks/setup-cli
-      - uses: databricks/setup-cli@main
+      - uses: databricks/setup-cli@develop
  
       # Deploy the bundle to the "DEV" target as defined
       # in the bundle's settings file.
@@ -51,7 +51,7 @@ jobs:
       - uses: actions/checkout@v3
  
       # Use the downloaded Databricks CLI.
-      - uses: databricks/setup-cli@main
+      - uses: databricks/setup-cli@develop
  
       # Run the Databricks workflow named "dab_test_job" as defined in the
       # bundle that was just deployed.
