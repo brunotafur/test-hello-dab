@@ -3,8 +3,8 @@ bundle:
 
 resources:
   jobs:
-    workflow-unit-tests:
-      name: workflow-unit-tests
+    workflow_unit_tests:
+      name: workflow_unit_tests
       tasks:
         - task_key: hello-task
           # existing_cluster_id: 1234-567890-abcde123
