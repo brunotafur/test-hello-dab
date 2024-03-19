@@ -59,7 +59,7 @@ jobs:
         working-directory: .
         env:
           DATABRICKS_TOKEN: ${{ secrets.SP_TOKEN }}
-          DATABRICKS_BUNDLE_ENV: devopment
+          DATABRICKS_BUNDLE_ENV: development
 
 #GitHub - databricks/setup-cli: Sets up the Databricks CLI in your GitHub Actions workflow.
 #Sets up the Databricks CLI in your GitHub Actions workflow. - databricks/setup-cli
