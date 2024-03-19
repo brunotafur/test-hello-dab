@@ -11,7 +11,7 @@ concurrency: 1
 on:
   push:
     branches:
-      - main
+      - develop
  
 jobs:
   # Used by the "pipeline_update" job to deploy the bundle.
@@ -63,3 +63,6 @@ jobs:
 
 #GitHub - databricks/setup-cli: Sets up the Databricks CLI in your GitHub Actions workflow.
 #Sets up the Databricks CLI in your GitHub Actions workflow. - databricks/setup-cli
+
+
+
