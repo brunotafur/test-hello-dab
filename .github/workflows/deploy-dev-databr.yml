@@ -31,7 +31,7 @@ jobs:
  
       # Deploy the bundle to the "DEV" target as defined
       # in the bundle's settings file.
-      - run: databricks bundle deploy
+      - run: databricks bundle deploy --debug
         working-directory: .
         env:
           DATABRICKS_TOKEN: ${{ secrets.SP_TOKEN }}
