@@ -12,7 +12,7 @@ resources:
           # notebook_task:
           #   notebook_path: /hello.py
           spark_python_task:
-            python_file: ./databricks/hello.py
+            python_file: ./src/hello.py
       job_clusters:
         - job_cluster_key: unit_tests_job_cluster
           new_cluster:
