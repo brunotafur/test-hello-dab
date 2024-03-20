@@ -31,8 +31,8 @@ jobs:
  
       # Deploy the bundle to the "DEV" target as defined
       # in the bundle's settings file.
-      - run: databricks bundle deploy --debug
-        working-directory: .
+      - run: databricks bundle deploy
+        working-directory: databricks
         env:
           DATABRICKS_TOKEN: ${{ secrets.SP_TOKEN }}
           DATABRICKS_BUNDLE_ENV: development
@@ -56,7 +56,7 @@ jobs:
       # Run the Databricks workflow named "dab_test_job" as defined in the
       # bundle that was just deployed.
       - run: databricks bundle run workflow_unit_tests --refresh-all
-        working-directory: .
+        working-directory: databricks
         env:
           DATABRICKS_TOKEN: ${{ secrets.SP_TOKEN }}
           DATABRICKS_BUNDLE_ENV: development
