@@ -26,13 +26,13 @@ targets:
   development:
     default: true
     workspace:
-      host: https://dbc-1f36ff04-9e4c.cloud.databricks.com
+      host: https://e2-demo-west.cloud.databricks.com
   qa:
     workspace:
-      host: https://dbc-f65cc6b0-e206.cloud.databricks.com
+      host: https://e2-demo-west.cloud.databricks.com
   production:
     workspace:
-      host: https://dbc-0dad052b-5b99.cloud.databricks.com
+      host: https://e2-demo-west.cloud.databricks.com
 
 # to validate task:
 # databricks bundle validate
